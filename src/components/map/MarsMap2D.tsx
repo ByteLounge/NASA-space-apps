@@ -26,6 +26,7 @@ interface MarsMap2DProps {
   comparisonRoutes?: { safest: RouteResult; fastest: RouteResult; science: RouteResult } | null;
   showComparison: boolean;
   activeLayers: ActiveLayers;
+  baseOpacity?: number;
   onSelectCoordinate: (coord: MarsCoordinate) => void;
   onSelectSciencePoint: (point: SciencePoint) => void;
   onHoverCoordinate?: (coord: MarsCoordinate | null) => void;
@@ -40,6 +41,7 @@ export default function MarsMap2D({
   comparisonRoutes,
   showComparison,
   activeLayers,
+  baseOpacity = 1.0,
   onSelectCoordinate,
   onSelectSciencePoint,
   onHoverCoordinate,
@@ -50,6 +52,7 @@ export default function MarsMap2D({
   const mapRef = useRef<L.Map | null>(null);
 
   const baseLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const currentTileLayerRef = useRef<L.TileLayer | null>(null);
   const elevationGridLayerRef = useRef<L.LayerGroup | null>(null);
   const slopeHazardLayerRef = useRef<L.LayerGroup | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -133,10 +136,19 @@ export default function MarsMap2D({
       maxZoom: 16,
       noWrap: false,
       bounds: [[-90, -180], [90, 180]],
+      opacity: baseOpacity,
     });
 
+    currentTileLayerRef.current = tileLayer;
     baseGroup.addLayer(tileLayer);
-  }, [activeLayers.baseImagery]);
+  }, [activeLayers.baseImagery, baseOpacity]);
+
+  // Dynamic Opacity Adjustment
+  useEffect(() => {
+    if (currentTileLayerRef.current) {
+      currentTileLayerRef.current.setOpacity(baseOpacity);
+    }
+  }, [baseOpacity]);
 
   // Fly to region
   useEffect(() => {
@@ -148,6 +160,19 @@ export default function MarsMap2D({
       mapRef.current.flyTo([centerLat, centerLng], 9, { duration: 1.2 });
     }
   }, [selectedRegionId]);
+
+  // Fly to distant selected coordinate (e.g. from bookmarks or search)
+  useEffect(() => {
+    if (!mapRef.current || !selectedCoordinate) return;
+    const center = mapRef.current.getCenter();
+    const dLat = Math.abs(center.lat - selectedCoordinate.lat);
+    const dLng = Math.abs(normalizeLongitude180(center.lng) - normalizeLongitude180(selectedCoordinate.lng));
+    if (dLat > 2 || dLng > 2) {
+      mapRef.current.flyTo([selectedCoordinate.lat, selectedCoordinate.lng], Math.max(mapRef.current.getZoom(), 9), {
+        duration: 1.2,
+      });
+    }
+  }, [selectedCoordinate]);
 
   // Render Google Maps Style Pins for Landmarks
   useEffect(() => {

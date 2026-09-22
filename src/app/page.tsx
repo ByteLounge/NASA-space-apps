@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import TopBar from "@/components/layout/TopBar";
 import BottomBar from "@/components/layout/BottomBar";
 import LandingHero from "@/components/layout/LandingHero";
-import LayerControl from "@/components/panels/LayerControl";
 import LocationInspector from "@/components/panels/LocationInspector";
 import RoutePlannerPanel from "@/components/panels/RoutePlannerPanel";
 import RouteComparisonPanel from "@/components/panels/RouteComparisonPanel";
@@ -16,6 +15,10 @@ import DataSourcesModal from "@/components/panels/DataSourcesModal";
 
 import MarsLoadingScreen from "@/components/layout/MarsLoadingScreen";
 import AstronautGuide from "@/components/layout/AstronautGuide";
+import TrekToolbar, { TrekActiveDrawer } from "@/components/layout/TrekToolbar";
+import TrekLayersDrawer from "@/components/panels/TrekLayersDrawer";
+import TrekBookmarksDrawer from "@/components/panels/TrekBookmarksDrawer";
+import TrekToolsDrawer from "@/components/panels/TrekToolsDrawer";
 
 import { MarsCoordinate } from "@/lib/mars-coordinates";
 import { REGIONAL_DEMS, analyzeTerrain, TerrainAnalysis } from "@/lib/mola-data";
@@ -70,7 +73,6 @@ export default function MarscopeApp() {
     hazards: true,
     activeRoute: true,
   });
-  const [isLayerControlOpen, setIsLayerControlOpen] = useState(false);
 
   // Route Planning
   const [startCoord, setStartCoord] = useState<MarsCoordinate | null>({
@@ -93,6 +95,8 @@ export default function MarscopeApp() {
   const [isLandingHeroOpen, setIsLandingHeroOpen] = useState(true);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTrekDrawer, setActiveTrekDrawer] = useState<TrekActiveDrawer>("NONE");
+  const [baseOpacity, setBaseOpacity] = useState<number>(1.0);
   const [activeRightTab, setActiveRightTab] = useState<"INSPECTOR" | "ROUTER">("ROUTER");
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
@@ -100,6 +104,23 @@ export default function MarscopeApp() {
   const [isMissionBriefOpen, setIsMissionBriefOpen] = useState(false);
   const [isAskMarscopeOpen, setIsAskMarscopeOpen] = useState(false);
   const [isDataSourcesOpen, setIsDataSourcesOpen] = useState(false);
+
+  // Trek drawer toggler
+  const handleToggleTrekDrawer = (drawer: TrekActiveDrawer) => {
+    if (drawer === "PLANNER") {
+      setActiveTrekDrawer("NONE");
+      setActiveRightTab("ROUTER");
+      setIsRightPanelCollapsed(false);
+    } else if (drawer === "SOURCES") {
+      setActiveTrekDrawer("NONE");
+      setIsDataSourcesOpen(true);
+    } else if (drawer === "AI") {
+      setActiveTrekDrawer("NONE");
+      setIsAskMarscopeOpen(true);
+    } else {
+      setActiveTrekDrawer(activeTrekDrawer === drawer ? "NONE" : drawer);
+    }
+  };
 
   // Derived Analysis for Selected Coordinate
   const terrainAnalysis: TerrainAnalysis | null = useMemo(() => {
@@ -223,6 +244,7 @@ export default function MarscopeApp() {
         onOpenDataSources={() => setIsDataSourcesOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenMissionBrief={() => setIsMissionBriefOpen(true)}
+        onSelectSearchResult={(point) => handleSelectSciencePoint(point)}
         hasActiveRoute={!!activeRoute}
       />
 
@@ -242,6 +264,7 @@ export default function MarscopeApp() {
               comparisonRoutes={comparisonRoutes}
               showComparison={isComparisonModalOpen}
               activeLayers={activeLayers}
+              baseOpacity={baseOpacity}
               onSelectCoordinate={handleSelectCoordinate}
               onSelectSciencePoint={handleSelectSciencePoint}
               onHoverCoordinate={setHoverCoordinate}
@@ -263,15 +286,57 @@ export default function MarscopeApp() {
           </div>
         </div>
 
-        {/* Left Floating Panel: Layer Controls */}
-        <div className="absolute top-4 left-4 z-20">
-          <LayerControl
+        {/* NASA Mars Trek Toolstrip (Left) */}
+        <TrekToolbar
+          activeDrawer={activeTrekDrawer}
+          onToggleDrawer={handleToggleTrekDrawer}
+          onOpenGuide={() => setIsGuideOpen(true)}
+          hasActiveRoute={!!activeRoute}
+        />
+
+        {/* NASA Trek Left Flyout Drawers */}
+        {activeTrekDrawer === "LAYERS" && (
+          <TrekLayersDrawer
             activeLayers={activeLayers}
             onLayerChange={setActiveLayers}
-            isOpen={isLayerControlOpen}
-            onToggleOpen={() => setIsLayerControlOpen(!isLayerControlOpen)}
+            baseOpacity={baseOpacity}
+            onBaseOpacityChange={setBaseOpacity}
+            onClose={() => setActiveTrekDrawer("NONE")}
           />
-        </div>
+        )}
+
+        {activeTrekDrawer === "BOOKMARKS" && (
+          <TrekBookmarksDrawer
+            onSelectFeature={(feature) => {
+              handleSelectSciencePoint(feature);
+              setActiveTrekDrawer("NONE");
+            }}
+            onFlyTo={(coord) => {
+              handleSelectCoordinate(coord);
+              setActiveTrekDrawer("NONE");
+            }}
+            onClose={() => setActiveTrekDrawer("NONE")}
+          />
+        )}
+
+        {activeTrekDrawer === "TOOLS" && (
+          <TrekToolsDrawer
+            activeRoute={activeRoute}
+            onOpenElevationChart={() => {
+              setIsElevationChartOpen(true);
+              setActiveTrekDrawer("NONE");
+            }}
+            onOpenComparison={() => {
+              setIsComparisonModalOpen(true);
+              setActiveTrekDrawer("NONE");
+            }}
+            onOpenMissionBrief={() => {
+              setIsMissionBriefOpen(true);
+              setActiveTrekDrawer("NONE");
+            }}
+            onClose={() => setActiveTrekDrawer("NONE")}
+          />
+        )}
 
         {/* Right Panel: Inspector & Route Planner */}
         <div

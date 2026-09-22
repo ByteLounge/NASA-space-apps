@@ -420,6 +420,25 @@ export default function MarsGlobe3D({
     targetCameraPosRef.current = new THREE.Vector3(0, 0, 2.7);
   }, []);
 
+  // Smooth Google Earth Fly-To when selected coordinate changes
+  useEffect(() => {
+    if (selectedCoordinate && viewMode === "GLOBE") {
+      flyToCoordinate(selectedCoordinate.lat, selectedCoordinate.lng);
+    }
+  }, [selectedCoordinate, viewMode, flyToCoordinate]);
+
+  // Smooth Fly-To when region changes
+  useEffect(() => {
+    if (viewMode === "GLOBE") {
+      const dem = REGIONAL_DEMS.find((d) => d.id === selectedRegionId);
+      if (dem) {
+        const centerLat = (dem.latMin + dem.latMax) / 2;
+        const centerLng = (dem.lngMin + dem.lngMax) / 2;
+        flyToCoordinate(centerLat, centerLng);
+      }
+    }
+  }, [selectedRegionId, viewMode, flyToCoordinate]);
+
   // Handle 3D MOLA Terrain Heightfield Generation
   useEffect(() => {
     if (!sceneRef.current) return;
