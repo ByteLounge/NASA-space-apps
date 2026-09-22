@@ -13,17 +13,26 @@
 import * as THREE from "three";
 import { getGlobalMolaElevation } from "./mola-data";
 
+let cachedAlbedoTexture: THREE.CanvasTexture | null = null;
+let cachedBumpTexture: THREE.CanvasTexture | null = null;
+let cachedSkyboxTexture: THREE.CanvasTexture | null = null;
+
 /**
- * Creates an ultra-detailed 4096x2048 Martian Albedo Texture.
+ * Creates an ultra-detailed Martian Albedo Texture.
  * Calibrated against USGS Viking MDIM 2.1 and ESA Mars Express HRSC true-color palettes.
+ * Cached as singleton for zero-lag instant rendering.
  */
 export function createMarsAlbedoTexture(): THREE.CanvasTexture {
   if (typeof document === "undefined") {
     return new THREE.Texture() as THREE.CanvasTexture;
   }
 
-  const width = 4096;
-  const height = 2048;
+  if (cachedAlbedoTexture) {
+    return cachedAlbedoTexture;
+  }
+
+  const width = 2048;
+  const height = 1024;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -183,20 +192,26 @@ export function createMarsAlbedoTexture(): THREE.CanvasTexture {
   texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.anisotropy = 8;
+  texture.anisotropy = 4;
+  cachedAlbedoTexture = texture;
   return texture;
 }
 
 /**
  * Creates a high-precision MOLA elevation bump relief texture.
+ * Cached as singleton for instant rendering.
  */
 export function createMarsBumpTexture(): THREE.CanvasTexture {
   if (typeof document === "undefined") {
     return new THREE.Texture() as THREE.CanvasTexture;
   }
 
-  const width = 2048;
-  const height = 1024;
+  if (cachedBumpTexture) {
+    return cachedBumpTexture;
+  }
+
+  const width = 1024;
+  const height = 512;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -236,6 +251,7 @@ export function createMarsBumpTexture(): THREE.CanvasTexture {
   texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
+  cachedBumpTexture = texture;
   return texture;
 }
 
@@ -248,9 +264,17 @@ export function createDeepSpaceSkybox(): THREE.Mesh {
   const skyGeo = new THREE.SphereGeometry(skyRadius, 60, 40);
   skyGeo.scale(-1, 1, 1); // Invert faces inward
 
+  if (cachedSkyboxTexture) {
+    const skyMat = new THREE.MeshBasicMaterial({
+      map: cachedSkyboxTexture,
+      side: THREE.BackSide,
+    });
+    return new THREE.Mesh(skyGeo, skyMat);
+  }
+
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 1024;
+  canvas.width = 1536;
+  canvas.height = 768;
   const ctx = canvas.getContext("2d");
 
   if (ctx) {
@@ -315,6 +339,7 @@ export function createDeepSpaceSkybox(): THREE.Mesh {
   }
 
   const skyTex = new THREE.CanvasTexture(canvas);
+  cachedSkyboxTexture = skyTex;
   const skyMat = new THREE.MeshBasicMaterial({
     map: skyTex,
     side: THREE.BackSide,

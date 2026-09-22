@@ -20,6 +20,7 @@ interface TopBarProps {
   onToggleViewMode: (mode: "2D" | "3D") => void;
   onOpenAskMarscope: () => void;
   onOpenDataSources: () => void;
+  onOpenGuide: () => void;
   onOpenMissionBrief?: () => void;
   hasActiveRoute: boolean;
 }
@@ -31,6 +32,7 @@ export default function TopBar({
   onToggleViewMode,
   onOpenAskMarscope,
   onOpenDataSources,
+  onOpenGuide,
   onOpenMissionBrief,
   hasActiveRoute,
 }: TopBarProps) {
@@ -106,6 +108,14 @@ export default function TopBar({
 
       {/* Utilities & Help */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={onOpenGuide}
+          className="flex items-center gap-1.5 bg-gradient-to-r from-mars-700/80 to-mars-600/80 hover:from-mars-600 hover:to-mars-500 border border-mars-500/50 text-white px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold shadow-sm transition-all"
+        >
+          <span className="text-sm">👨‍🚀</span>
+          <span className="hidden sm:inline">Mission Guide</span>
+        </button>
+
         <button
           onClick={onOpenAskMarscope}
           className="flex items-center gap-1.5 bg-surface-dark hover:bg-surface-card border border-surface-border text-gray-200 px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors"

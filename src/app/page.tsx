@@ -14,6 +14,9 @@ import MissionBriefModal from "@/components/panels/MissionBriefModal";
 import AskMarscopeModal from "@/components/panels/AskMarscopeModal";
 import DataSourcesModal from "@/components/panels/DataSourcesModal";
 
+import MarsLoadingScreen from "@/components/layout/MarsLoadingScreen";
+import AstronautGuide from "@/components/layout/AstronautGuide";
+
 import { MarsCoordinate } from "@/lib/mars-coordinates";
 import { REGIONAL_DEMS, analyzeTerrain, TerrainAnalysis } from "@/lib/mola-data";
 import { SCIENCE_POINTS, SciencePoint, computeScientificInterestScore, ScienceScoreResult } from "@/lib/science-data";
@@ -87,8 +90,9 @@ export default function MarscopeApp() {
   } | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
 
-  // Panels & Modals
   const [isLandingHeroOpen, setIsLandingHeroOpen] = useState(true);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeRightTab, setActiveRightTab] = useState<"INSPECTOR" | "ROUTER">("ROUTER");
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
@@ -217,15 +221,20 @@ export default function MarscopeApp() {
         onToggleViewMode={setViewMode}
         onOpenAskMarscope={() => setIsAskMarscopeOpen(true)}
         onOpenDataSources={() => setIsDataSourcesOpen(true)}
+        onOpenGuide={() => setIsGuideOpen(true)}
         onOpenMissionBrief={() => setIsMissionBriefOpen(true)}
         hasActiveRoute={!!activeRoute}
       />
 
       {/* Main Viewport Workspace */}
       <main className="relative flex-1 w-full h-[calc(100vh-5.75rem)] overflow-hidden">
-        {/* Map / 3D Canvas */}
+        {/* Map / 3D Canvas with Zero-Lag Concurrency */}
         <div className="absolute inset-0 z-0">
-          {viewMode === "2D" ? (
+          <div
+            className={`absolute inset-0 transition-opacity duration-300 ${
+              viewMode === "2D" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            }`}
+          >
             <MarsMap2D
               selectedRegionId={selectedRegionId}
               selectedCoordinate={selectedCoordinate}
@@ -237,7 +246,13 @@ export default function MarscopeApp() {
               onSelectSciencePoint={handleSelectSciencePoint}
               onHoverCoordinate={setHoverCoordinate}
             />
-          ) : (
+          </div>
+
+          <div
+            className={`absolute inset-0 transition-opacity duration-300 ${
+              viewMode === "3D" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            }`}
+          >
             <MarsGlobe3D
               selectedRegionId={selectedRegionId}
               selectedCoordinate={selectedCoordinate}
@@ -245,7 +260,7 @@ export default function MarscopeApp() {
               onSelectCoordinate={handleSelectCoordinate}
               onSelectFeature={handleSelectSciencePoint}
             />
-          )}
+          </div>
         </div>
 
         {/* Left Floating Panel: Layer Controls */}
@@ -404,6 +419,15 @@ export default function MarscopeApp() {
       {isDataSourcesOpen && (
         <DataSourcesModal onClose={() => setIsDataSourcesOpen(false)} />
       )}
+
+      {/* 2D Astronaut Guided Tour Companion */}
+      <AstronautGuide
+        isOpen={isGuideOpen}
+        onToggle={() => setIsGuideOpen(!isGuideOpen)}
+      />
+
+      {/* 2D Rocket Orbiting Mars Loading Screen */}
+      <MarsLoadingScreen onLoaded={() => setIsLoading(false)} />
     </div>
   );
 }
