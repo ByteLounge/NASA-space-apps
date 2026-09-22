@@ -7,6 +7,7 @@ import { MarsCoordinate, formatMarsCoordinate, normalizeLongitude180 } from "@/l
 import { REGIONAL_DEMS, RegionalDEM, getMarsElevation, analyzeTerrain } from "@/lib/mola-data";
 import { SCIENCE_POINTS, SciencePoint } from "@/lib/science-data";
 import { RouteResult } from "@/lib/pathfinding";
+import { Search, MapPin, Navigation, Mountain, Layers, Sparkles, AlertTriangle, Crosshair } from "lucide-react";
 
 export interface ActiveLayers {
   baseImagery: "VIKING" | "MOLA_COLOR" | "THEMIS_IR";
@@ -55,6 +56,10 @@ export default function MarsMap2D({
   const routesLayerRef = useRef<L.LayerGroup | null>(null);
   const selectedMarkerRef = useRef<L.CircleMarker | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SciencePoint[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -62,8 +67,8 @@ export default function MarsMap2D({
     // Use EPSG:4326 Equirectangular (Standard IAU Mars Cartographic Projection)
     const map = L.map(mapContainerRef.current, {
       crs: L.CRS.EPSG4326,
-      center: [18.38, 77.53], // Default Jezero
-      zoom: 9,
+      center: [18.38, 77.53], // Default Jezero Crater
+      zoom: 8,
       minZoom: 2,
       maxZoom: 16,
       zoomControl: false,
@@ -72,17 +77,16 @@ export default function MarsMap2D({
 
     mapRef.current = map;
 
-    // Add zoom controls to bottom-right
+    // Google Maps Style Controls
     L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.control.scale({ imperial: false, position: "bottomleft", maxWidth: 120 }).addTo(map);
 
-    // Initialize layer groups
     baseLayerGroupRef.current = L.layerGroup().addTo(map);
     elevationGridLayerRef.current = L.layerGroup().addTo(map);
     slopeHazardLayerRef.current = L.layerGroup().addTo(map);
     markersLayerRef.current = L.layerGroup().addTo(map);
     routesLayerRef.current = L.layerGroup().addTo(map);
 
-    // Map Click Handler: Inspect Point
     map.on("click", (e: L.LeafletMouseEvent) => {
       const coord: MarsCoordinate = {
         lat: Math.round(e.latlng.lat * 100000) / 100000,
@@ -91,7 +95,6 @@ export default function MarsMap2D({
       onSelectCoordinate(coord);
     });
 
-    // Mousemove Handler: Hover Coordinate
     map.on("mousemove", (e: L.LeafletMouseEvent) => {
       if (onHoverCoordinate) {
         onHoverCoordinate({
@@ -117,17 +120,12 @@ export default function MarsMap2D({
     const baseGroup = baseLayerGroupRef.current;
     baseGroup.clearLayers();
 
-    // High-resolution public NASA/USGS Mars tile servers
-    // Viking MDIM2.1, MOLA Color Shaded Relief, THEMIS Day IR
     let tileUrl = "";
     if (activeLayers.baseImagery === "VIKING") {
-      // USGS Astrogeology Viking Color Mosaic
       tileUrl = "https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg";
     } else if (activeLayers.baseImagery === "MOLA_COLOR") {
-      // NASA Solar System Treks MOLA Color Shaded Relief
       tileUrl = "https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg";
     } else {
-      // THEMIS Daytime Infrared 100m
       tileUrl = "https://trek.nasa.gov/tiles/Mars/EQ/Mars_MO_THEMIS-IR-Day_mosaic_global_100m_v2/1.0.0/default/default028mm/{z}/{y}/{x}.jpg";
     }
 
@@ -137,33 +135,27 @@ export default function MarsMap2D({
       bounds: [[-90, -180], [90, 180]],
     });
 
-    // Fallback if network tiles are unreachable (offline demo resilience)
-    tileLayer.on("tileerror", () => {
-      // Graceful offline fallback: tile container retains deep Mars background styling
-    });
-
     baseGroup.addLayer(tileLayer);
   }, [activeLayers.baseImagery]);
 
-  // Fly to region when region selector changes
+  // Fly to region
   useEffect(() => {
     if (!mapRef.current) return;
     const dem = REGIONAL_DEMS.find((d) => d.id === selectedRegionId);
     if (dem) {
       const centerLat = (dem.latMin + dem.latMax) / 2;
       const centerLng = (dem.lngMin + dem.lngMax) / 2;
-      mapRef.current.flyTo([centerLat, centerLng], 10, { duration: 1.2 });
+      mapRef.current.flyTo([centerLat, centerLng], 9, { duration: 1.2 });
     }
   }, [selectedRegionId]);
 
-  // Render Science Points and Hazard Markers
+  // Render Google Maps Style Pins for Landmarks
   useEffect(() => {
     if (!mapRef.current || !markersLayerRef.current) return;
     const group = markersLayerRef.current;
     group.clearLayers();
 
     SCIENCE_POINTS.forEach((pt) => {
-      // Layer visibility filtering
       if (pt.category === "SCIENCE_TARGET" && !activeLayers.scienceTargets) return;
       if (pt.category === "MINERAL_CRISM" && !activeLayers.crismMinerals) return;
       if (pt.category === "HAZARD_ZONE" && !activeLayers.hazards) return;
@@ -174,25 +166,40 @@ export default function MarsMap2D({
         pt.category === "MINERAL_CRISM" ? "#a855f7" :
         pt.category === "HAZARD_ZONE" ? "#ef4444" : "#f59e0b";
 
-      const marker = L.circleMarker([pt.lat, pt.lng], {
-        radius: pt.category === "HAZARD_ZONE" ? 8 : 7,
-        fillColor: color,
-        fillOpacity: 0.85,
-        color: "#ffffff",
-        weight: 1.5,
+      // Google Maps Custom SVG Pin
+      const iconHtml = `
+        <div class="relative group cursor-pointer" style="transform: translate(-50%, -100%);">
+          <div class="w-7 h-7 rounded-full flex items-center justify-center shadow-lg border border-white/80 transition-transform group-hover:scale-125" style="background-color: ${color};">
+            <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+          </div>
+          <div class="w-1.5 h-2 mx-auto" style="background-color: ${color}; clip-path: polygon(0 0, 100% 0, 50% 100%);"></div>
+        </div>
+      `;
+
+      const customIcon = L.divIcon({
+        html: iconHtml,
+        className: "custom-mars-pin",
+        iconSize: [28, 36],
+        iconAnchor: [14, 36],
       });
 
-      // Custom tooltip with NASA telemetry
-      marker.bindTooltip(
-        `<div class="p-1 font-mono text-xs">
-          <div class="font-bold text-white flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full inline-block" style="background-color: ${color}"></span>
+      const marker = L.marker([pt.lat, pt.lng], { icon: customIcon });
+
+      // Rich Google Maps Popup
+      marker.bindPopup(
+        `<div class="p-2 font-mono text-xs max-w-xs">
+          <div class="font-bold text-white text-sm mb-1 flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full inline-block" style="background-color: ${color}"></span>
             ${pt.name}
           </div>
-          <div class="text-[11px] text-gray-300 mt-1">${pt.description}</div>
-          <div class="text-[10px] text-gray-400 mt-1">Elev: ${pt.elevationMeters}m | Mission: ${pt.instruments.join(", ")}</div>
+          <div class="text-[11px] text-gray-300 mb-2">${pt.description}</div>
+          <div class="bg-surface-dark p-2 rounded border border-surface-border text-[10px] space-y-1 mb-2">
+            <div><span class="text-gray-400">Coordinates:</span> ${formatMarsCoordinate({ lat: pt.lat, lng: pt.lng })}</div>
+            <div><span class="text-gray-400">Elevation:</span> ${pt.elevationMeters} m</div>
+            <div><span class="text-gray-400">Missions:</span> ${pt.instruments.join(", ")}</div>
+          </div>
         </div>`,
-        { className: "bg-surface-darker/95 border border-surface-border text-white shadow-hud rounded-md p-2", direction: "top" }
+        { className: "bg-surface-darker/95 border border-surface-border text-white shadow-2xl rounded-xl" }
       );
 
       marker.on("click", (e) => {
@@ -202,7 +209,7 @@ export default function MarsMap2D({
 
       group.addLayer(marker);
     });
-  }, [activeLayers.scienceTargets, activeLayers.crismMinerals, activeLayers.hazards]);
+  }, [activeLayers.scienceTargets, activeLayers.crismMinerals, activeLayers.hazards, onSelectSciencePoint]);
 
   // Render MOLA Elevation Grid & Slope Hazard Overlays
   useEffect(() => {
@@ -215,7 +222,6 @@ export default function MarsMap2D({
     const dem = REGIONAL_DEMS.find((d) => d.id === selectedRegionId);
     if (!dem) return;
 
-    // Draw slope hazard cells if enabled
     if (activeLayers.slopeHazards) {
       for (let r = 0; r < dem.rows - 1; r += 2) {
         for (let c = 0; c < dem.cols - 1; c += 2) {
@@ -226,8 +232,8 @@ export default function MarsMap2D({
           if (analysis.slopeDegrees >= 12) {
             const cellLatSpan = (dem.latMax - dem.latMin) / (dem.rows - 1) * 2;
             const cellLngSpan = (dem.lngMax - dem.lngMin) / (dem.cols - 1) * 2;
-
             const isExtreme = analysis.slopeDegrees >= 18;
+
             const rect = L.rectangle(
               [
                 [lat, lng],
@@ -255,7 +261,6 @@ export default function MarsMap2D({
       }
     }
 
-    // Draw regional boundary
     const boundary = L.rectangle(
       [
         [dem.latMin, dem.lngMin],
@@ -263,16 +268,16 @@ export default function MarsMap2D({
       ],
       {
         color: "#f05a36",
-        weight: 1,
+        weight: 1.5,
         dashArray: "4, 6",
         fill: false,
-        opacity: 0.5,
+        opacity: 0.6,
       }
     );
     elevGroup.addLayer(boundary);
   }, [selectedRegionId, activeLayers.slopeHazards, activeLayers.molaElevation]);
 
-  // Render Traversal Routes
+  // Render Routes
   useEffect(() => {
     if (!mapRef.current || !routesLayerRef.current) return;
     const group = routesLayerRef.current;
@@ -280,12 +285,11 @@ export default function MarsMap2D({
 
     if (!activeLayers.activeRoute) return;
 
-    // If Comparison mode is active, render all 3 routes side by side
     if (showComparison && comparisonRoutes) {
       const routesToRender = [
-        { route: comparisonRoutes.safest, color: "#10b981", name: "SAFEST (Low Slope)" },
-        { route: comparisonRoutes.fastest, color: "#00e5ff", name: "FASTEST (Direct)" },
-        { route: comparisonRoutes.science, color: "#a855f7", name: "SCIENCE (High Value)" },
+        { route: comparisonRoutes.safest, color: "#10b981", name: "SAFEST" },
+        { route: comparisonRoutes.fastest, color: "#00e5ff", name: "FASTEST" },
+        { route: comparisonRoutes.science, color: "#a855f7", name: "SCIENCE" },
       ];
 
       routesToRender.forEach(({ route, color, name }) => {
@@ -300,8 +304,7 @@ export default function MarsMap2D({
 
         line.bindTooltip(
           `<div class="p-1 font-mono text-xs">
-            <span class="font-bold" style="color: ${color}">${name}</span><br/>
-            Dist: ${route.totalDistanceKm} km | Time: ${route.totalDurationFormatted} | Max Slope: ${route.maxSlopeDeg}°
+            <span class="font-bold" style="color: ${color}">${name}</span>: ${route.totalDistanceKm} km (${route.totalDurationFormatted})
           </div>`,
           { className: "bg-surface-darker/95 border border-surface-border text-white rounded p-1.5", sticky: true }
         );
@@ -309,7 +312,6 @@ export default function MarsMap2D({
         group.addLayer(line);
       });
     } else if (activeRoute && activeRoute.waypoints.length > 0) {
-      // Render single active route
       const latLngs: [number, number][] = activeRoute.waypoints.map((wp) => [wp.lat, wp.lng]);
       const color =
         activeRoute.strategy === "SAFEST" ? "#10b981" :
@@ -323,7 +325,7 @@ export default function MarsMap2D({
 
       group.addLayer(polyline);
 
-      // Start Marker (Green Pin)
+      // Start & Dest Markers
       const startWp = activeRoute.waypoints[0];
       const startMarker = L.circleMarker([startWp.lat, startWp.lng], {
         radius: 8,
@@ -334,7 +336,6 @@ export default function MarsMap2D({
       }).bindTooltip("<b>START STATION</b>", { permanent: false, direction: "top" });
       group.addLayer(startMarker);
 
-      // Destination Marker (Red Flag Pin)
       const destWp = activeRoute.waypoints[activeRoute.waypoints.length - 1];
       const destMarker = L.circleMarker([destWp.lat, destWp.lng], {
         radius: 8,
@@ -347,7 +348,7 @@ export default function MarsMap2D({
     }
   }, [activeRoute, comparisonRoutes, showComparison, activeLayers.activeRoute]);
 
-  // Render Selected Coordinate Reticle Marker
+  // Reticle Marker
   useEffect(() => {
     if (!mapRef.current) return;
     if (selectedMarkerRef.current) {
@@ -369,14 +370,81 @@ export default function MarsMap2D({
     }
   }, [selectedCoordinate]);
 
+  // Google Maps Search Filter
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (!val.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    const q = val.toLowerCase();
+    const matches = SCIENCE_POINTS.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+    );
+    setSearchResults(matches.slice(0, 6));
+  };
+
+  const handleSelectSearchResult = (pt: SciencePoint) => {
+    setSearchQuery(pt.name);
+    setIsSearching(false);
+    onSelectSciencePoint(pt);
+    if (mapRef.current) {
+      mapRef.current.flyTo([pt.lat, pt.lng], 11, { duration: 1.2 });
+    }
+  };
+
   return (
-    <div className="relative w-full h-full bg-surface-darkest">
+    <div className="relative w-full h-full bg-surface-darkest select-none">
       <div ref={mapContainerRef} className="w-full h-full z-0 cursor-crosshair" />
 
-      {/* Map Reticle Legend / Scale Info */}
-      <div className="absolute top-4 left-4 z-10 pointer-events-none hidden sm:flex items-center gap-3 bg-surface-darker/85 backdrop-blur-md border border-surface-border px-3 py-1.5 rounded-lg text-xs font-mono text-gray-300">
-        <span className="w-2 h-2 rounded-full bg-telemetry-cyan animate-ping" />
-        <span>PLANETARY PROJECTION: IAU EPSG:4326 EQUIRECTANGULAR</span>
+      {/* Google Maps Style Floating Search Pill (Top-Center) */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-80 sm:w-96">
+        <div className="relative flex items-center bg-surface-darker/95 backdrop-blur-md border border-surface-border rounded-2xl shadow-2xl p-1.5 focus-within:border-mars-500 transition-all">
+          <Search className="w-4 h-4 text-gray-400 ml-2.5 mr-2 shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onFocus={() => { if (searchQuery) setIsSearching(true); }}
+            placeholder="Search Mars (e.g. 'Perseverance', 'Olympus Mons')..."
+            className="w-full bg-transparent text-white font-mono text-xs focus:outline-none placeholder-gray-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(""); setSearchResults([]); setIsSearching(false); }}
+              className="text-gray-400 hover:text-white px-2"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Autocomplete Dropdown */}
+        {isSearching && searchResults.length > 0 && (
+          <div className="absolute top-12 left-0 w-full bg-surface-darker/95 backdrop-blur-md border border-surface-border rounded-xl shadow-2xl overflow-hidden mt-1 font-mono text-xs z-30">
+            {searchResults.map((res) => (
+              <button
+                key={res.id}
+                onClick={() => handleSelectSearchResult(res)}
+                className="w-full p-2.5 text-left hover:bg-surface-card flex items-start gap-2.5 border-b border-surface-border/50 last:border-none transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 text-mars-500 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-bold text-white">{res.name}</div>
+                  <div className="text-[10px] text-gray-400">{res.category.replace(/_/g, " ")} • Elev: {res.elevationMeters}m</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Projection Tag */}
+      <div className="absolute bottom-6 left-28 z-10 pointer-events-none hidden sm:flex items-center gap-2 bg-surface-darker/80 backdrop-blur-md border border-surface-border px-3 py-1 rounded-lg text-[10px] font-mono text-gray-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+        <span>IAU EPSG:4326 EQUIRECTANGULAR CARTOGRAPHY</span>
       </div>
     </div>
   );
