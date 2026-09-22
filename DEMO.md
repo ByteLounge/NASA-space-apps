@@ -58,5 +58,6 @@ $$\mathbf{NASA \ DATA} \longrightarrow \mathbf{ANALYSIS} \longrightarrow \mathbf
    * Review the **PLSS Life-Support Consumables**: Oxygen consumption ($248 \text{ L}$), Reserve margin ($+58 \text{ min}$), Battery reserve ($82\%$).
    * Show the contingency abort protocol and scientific sampling instructions.
    * Click **"Copy Text"** or **"Print"**.
-2. Open **"Data Sources"** in the top bar to show complete attribution to NASA Goddard, JPL-Caltech, and USGS Astrogeology.
-3. *Closing Line*: *"MARSCOPE empowers human Mars explorers to answer: Where should we go, how do we get there safely, and what will we discover along the way?"*
+2. Open **"Data Sources"** in the top bar or toolbar to show complete attribution to NASA Goddard, JPL-Caltech, and USGS Astrogeology.
+3. Click **"Commander Ares (👨‍🚀 Guide)"** in the left NASA Mars Trek toolstrip to showcase the step-by-step interactive onboarding for beginner users.
+4. *Closing Line*: *"MARSCOPE empowers human Mars explorers to answer: Where should we go, how do we get there safely, and what will we discover along the way?"*
