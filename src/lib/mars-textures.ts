@@ -18,7 +18,7 @@ import { getGlobalMolaElevation } from "./mola-data";
  */
 export function createMarsAlbedoTexture(): THREE.CanvasTexture {
   if (typeof document === "undefined") {
-    return new THREE.CanvasTexture(document.createElement("canvas"));
+    return new THREE.Texture() as THREE.CanvasTexture;
   }
 
   const width = 2048;
@@ -146,7 +146,7 @@ export function createMarsAlbedoTexture(): THREE.CanvasTexture {
  */
 export function createMarsBumpTexture(): THREE.CanvasTexture {
   if (typeof document === "undefined") {
-    return new THREE.CanvasTexture(document.createElement("canvas"));
+    return new THREE.Texture() as THREE.CanvasTexture;
   }
 
   const width = 1024;

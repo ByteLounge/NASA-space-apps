@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "node -r ./patch-readlink.cjs ./node_modules/next/dist/bin/next dev",
+    "build": "node -r ./patch-readlink.cjs ./node_modules/next/dist/bin/next build",
+    "start": "node -r ./patch-readlink.cjs ./node_modules/next/dist/bin/next start",
+    "lint": "node -r ./patch-readlink.cjs ./node_modules/next/dist/bin/next lint",
     "test": "vitest run"
   },
   "dependencies": {

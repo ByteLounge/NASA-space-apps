@@ -30,7 +30,7 @@ export interface SciencePoint {
   scientificRelevance: string;
   instruments: string[]; // e.g. ["CRISM", "HiRISE", "MOLA"]
   mineralogy?: string;
-  geologicEpoch?: "Noachian" | "Hesperian" | "Amazonian";
+  geologicEpoch?: "Noachian" | "Hesperian" | "Amazonian" | "Noachian/Hesperian" | "Hesperian/Amazonian";
   scienceWeight: number; // 0 to 100 for pathfinding reward
   sourceDataset: string;
   sourceUrl: string;
