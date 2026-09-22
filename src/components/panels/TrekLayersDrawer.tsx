@@ -16,7 +16,9 @@ import {
   TrendingUp,
   Sparkles,
   AlertTriangle,
-  Navigation
+  Navigation,
+  Globe2,
+  MapPin
 } from "lucide-react";
 
 interface TrekLayersDrawerProps {
@@ -104,6 +106,20 @@ export default function TrekLayersDrawer({
       desc: "A* simulated paths & checkpoints",
       icon: Navigation,
       color: "text-telemetry-cyan",
+    },
+    {
+      key: "nomenclature" as const,
+      name: "IAU Martian Nomenclature",
+      desc: "Craters, volcanoes, valleys, & stations",
+      icon: MapPin,
+      color: "text-amber-300",
+    },
+    {
+      key: "graticuleGrid" as const,
+      name: "Planetary Graticule Grid",
+      desc: "Latitude parallels & longitude meridians",
+      icon: Globe2,
+      color: "text-cyan-400",
     },
   ];
 

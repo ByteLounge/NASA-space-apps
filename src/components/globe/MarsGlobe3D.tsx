@@ -6,9 +6,11 @@ import { MarsCoordinate, normalizeLongitude180, formatMarsCoordinate } from "@/l
 import { REGIONAL_DEMS, RegionalDEM, getMarsElevation, analyzeTerrain } from "@/lib/mola-data";
 import { SCIENCE_POINTS, SciencePoint } from "@/lib/science-data";
 import { RouteResult } from "@/lib/pathfinding";
+import { ActiveLayers } from "@/components/map/MarsMap2D";
 import { 
   createMarsAlbedoTexture, 
   createMarsBumpTexture, 
+  createMarsMolaColorTexture,
   createDeepSpaceSkybox 
 } from "@/lib/mars-textures";
 import { 
@@ -27,13 +29,17 @@ import {
   ExternalLink,
   X,
   Sparkles,
-  Maximize2
+  Maximize2,
+  Sliders,
+  Sun
 } from "lucide-react";
 
 interface MarsGlobe3DProps {
   selectedRegionId: string;
   selectedCoordinate?: MarsCoordinate | null;
   activeRoute?: RouteResult | null;
+  activeLayers?: ActiveLayers;
+  sunAngleLs?: number;
   onSelectCoordinate: (coord: MarsCoordinate) => void;
   onSelectFeature?: (feature: SciencePoint) => void;
 }
@@ -42,6 +48,8 @@ export default function MarsGlobe3D({
   selectedRegionId,
   selectedCoordinate,
   activeRoute,
+  activeLayers,
+  sunAngleLs = 60,
   onSelectCoordinate,
   onSelectFeature,
 }: MarsGlobe3DProps) {
@@ -50,6 +58,7 @@ export default function MarsGlobe3D({
   const [exaggeration, setExaggeration] = useState<number>(2); // 1x, 2x, 5x
   const [isRotating, setIsRotating] = useState<boolean>(false);
   const [cameraAltitudeKm, setCameraAltitudeKm] = useState<number>(5400);
+  const [cameraTiltDeg, setCameraTiltDeg] = useState<number>(0);
   const [selectedPin, setSelectedPin] = useState<SciencePoint | null>(null);
   const [compassAngleDeg, setCompassAngleDeg] = useState<number>(0);
   const [hoveredFeature, setHoveredFeature] = useState<SciencePoint | null>(null);
@@ -59,6 +68,7 @@ export default function MarsGlobe3D({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const marsSphereRef = useRef<THREE.Mesh | null>(null);
+  const graticuleGroupRef = useRef<THREE.Group | null>(null);
   const terrainMeshRef = useRef<THREE.Mesh | null>(null);
   const routeLineRef = useRef<THREE.Line | null>(null);
   const markersGroupRef = useRef<THREE.Group | null>(null);
@@ -138,6 +148,39 @@ export default function MarsGlobe3D({
     marsSphereRef.current = marsSphere;
     scene.add(marsSphere);
 
+    // 3b. 3D Planetary Graticule Lines (Lat/Lon Grid)
+    const graticuleGroup = new THREE.Group();
+    graticuleGroupRef.current = graticuleGroup;
+    const rGrat = globeRadius * 1.003;
+    const gratMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, opacity: 0.35, transparent: true });
+    const eqMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, opacity: 0.75, transparent: true });
+    const primeMat = new THREE.LineBasicMaterial({ color: 0xf05a36, opacity: 0.75, transparent: true });
+
+    [-60, -30, 0, 30, 60].forEach((lat) => {
+      const latRad = (lat * Math.PI) / 180;
+      const y = rGrat * Math.sin(latRad);
+      const ringR = rGrat * Math.cos(latRad);
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 96; i++) {
+        const theta = (i / 96) * Math.PI * 2;
+        pts.push(new THREE.Vector3(ringR * Math.sin(theta), y, ringR * Math.cos(theta)));
+      }
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lat === 0 ? eqMat : gratMat);
+      graticuleGroup.add(line);
+    });
+
+    [-180, -120, -60, 0, 60, 120, 180].forEach((lng) => {
+      const lngRad = (lng * Math.PI) / 180;
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 64; i++) {
+        const latRad = (-90 + (i / 64) * 180) * (Math.PI / 180);
+        pts.push(new THREE.Vector3(rGrat * Math.cos(latRad) * Math.sin(lngRad), rGrat * Math.sin(latRad), rGrat * Math.cos(latRad) * Math.cos(lngRad)));
+      }
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lng === 0 ? primeMat : gratMat);
+      graticuleGroup.add(line);
+    });
+    scene.add(graticuleGroup);
+
     // 4. Photorealistic Atmospheric Rayleigh Limb Glow (Fresnel Shader)
     const atmosphereVertexShader = `
       varying vec3 vNormal;
@@ -155,7 +198,6 @@ export default function MarsGlobe3D({
       void main() {
         vec3 viewDir = normalize(-vPosition);
         float intensity = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8);
-        // Martian atmospheric scattering: warm peach near limb fading to subtle electric haze
         vec3 limbColor = mix(vec3(0.95, 0.45, 0.25), vec3(0.4, 0.6, 0.9), intensity * 0.4);
         gl_FragColor = vec4(limbColor, intensity * 0.42);
       }
@@ -177,6 +219,37 @@ export default function MarsGlobe3D({
     markersGroupRef.current = markersGroup;
     scene.add(markersGroup);
 
+    const createBillboardSprite = (name: string, strokeHex: string) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.fillStyle = "rgba(11, 15, 23, 0.88)";
+      ctx.strokeStyle = strokeHex;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(4, 8, 248, 48, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 20px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(name, 128, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(0.32, 0.08, 1);
+      return sprite;
+    };
+
     SCIENCE_POINTS.forEach((pt) => {
       const pos = latLngToVector3(pt.lat, pt.lng, globeRadius * 1.012);
 
@@ -186,7 +259,7 @@ export default function MarsGlobe3D({
         pt.category === "MINERAL_CRISM" ? 0xa855f7 :
         pt.category === "HAZARD_ZONE" ? 0xef4444 : 0xf59e0b;
 
-      // Pin Head (Spherical Bead)
+      // Pin Head
       const pinGeo = new THREE.SphereGeometry(0.022, 16, 16);
       const pinMat = new THREE.MeshStandardMaterial({
         color,
@@ -215,6 +288,17 @@ export default function MarsGlobe3D({
       pinGroup.add(stemLine);
       pinGroup.add(ringMesh);
       pinGroup.userData = { sciencePoint: pt };
+
+      // IAU Nomenclature 3D Billboard Sprite
+      const sprite = createBillboardSprite(
+        pt.name,
+        color === 0x00e5ff ? "#00e5ff" : color === 0x10b981 ? "#10b981" : "#f59e0b"
+      );
+      if (sprite) {
+        sprite.position.copy(pos).multiplyScalar(1.06);
+        sprite.name = "nomenclatureSprite";
+        pinGroup.add(sprite);
+      }
 
       markersGroup.add(pinGroup);
     });
@@ -355,6 +439,19 @@ export default function MarsGlobe3D({
         rotationVelocityRef.current.y *= 0.92;
       }
 
+      // Sync 3D Graticule & Markers
+      if (graticuleGroupRef.current && marsSphereRef.current) {
+        graticuleGroupRef.current.rotation.y = marsSphereRef.current.rotation.y;
+        graticuleGroupRef.current.rotation.x = marsSphereRef.current.rotation.x;
+        graticuleGroupRef.current.visible = activeLayers?.graticuleGrid !== false;
+      }
+
+      markersGroup.traverse((child) => {
+        if (child.name === "nomenclatureSprite") {
+          child.visible = activeLayers?.nomenclature !== false;
+        }
+      });
+
       // Auto rotation
       if (isRotating && marsSphereRef.current && viewMode === "GLOBE") {
         marsSphereRef.current.rotation.y += 0.0012;
@@ -415,6 +512,10 @@ export default function MarsGlobe3D({
       markersGroupRef.current.rotation.y = targetRotY;
       markersGroupRef.current.rotation.x = targetRotX;
     }
+    if (graticuleGroupRef.current) {
+      graticuleGroupRef.current.rotation.y = targetRotY;
+      graticuleGroupRef.current.rotation.x = targetRotX;
+    }
 
     // Zoom camera in like Google Earth
     targetCameraPosRef.current = new THREE.Vector3(0, 0, 2.7);
@@ -438,6 +539,39 @@ export default function MarsGlobe3D({
       }
     }
   }, [selectedRegionId, viewMode, flyToCoordinate]);
+
+  // Dynamic Basemap Texture Switching (VIKING vs MOLA_COLOR)
+  useEffect(() => {
+    if (!marsSphereRef.current) return;
+    const mat = marsSphereRef.current.material as THREE.MeshStandardMaterial;
+    if (activeLayers?.baseImagery === "MOLA_COLOR") {
+      mat.map = createMarsMolaColorTexture();
+    } else {
+      mat.map = createMarsAlbedoTexture();
+    }
+    mat.needsUpdate = true;
+  }, [activeLayers?.baseImagery]);
+
+  // Seasonal Sunlight Angle Simulator (Solar Longitude Ls)
+  useEffect(() => {
+    if (!sunLightRef.current) return;
+    const rad = ((sunAngleLs ?? 60) * Math.PI) / 180;
+    const x = Math.cos(rad) * 8;
+    const y = Math.sin(rad) * Math.sin((25.19 * Math.PI) / 180) * 4;
+    const z = Math.sin(rad) * Math.cos((25.19 * Math.PI) / 180) * 8;
+    sunLightRef.current.position.set(x, y, z);
+  }, [sunAngleLs]);
+
+  // Camera Tilt / Horizon Perspective Handler
+  const handleTiltChange = (tiltDeg: number) => {
+    setCameraTiltDeg(tiltDeg);
+    if (!cameraRef.current) return;
+    const dist = cameraRef.current.position.length();
+    const tiltRad = (tiltDeg * Math.PI) / 180;
+    cameraRef.current.position.y = Math.sin(tiltRad) * dist * 0.7;
+    cameraRef.current.position.z = Math.cos(tiltRad) * dist;
+    cameraRef.current.lookAt(0, 0, 0);
+  };
 
   // Handle 3D MOLA Terrain Heightfield Generation
   useEffect(() => {
@@ -568,6 +702,10 @@ export default function MarsGlobe3D({
     marsSphereRef.current.rotation.y = 0;
     markersGroupRef.current.rotation.x = 0;
     markersGroupRef.current.rotation.y = 0;
+    if (graticuleGroupRef.current) {
+      graticuleGroupRef.current.rotation.x = 0;
+      graticuleGroupRef.current.rotation.y = 0;
+    }
   };
 
   // Zoom controls
@@ -642,8 +780,8 @@ export default function MarsGlobe3D({
         )}
       </div>
 
-      {/* Google Earth Style Navigation Gizmo (Right-Hand Dock) */}
-      <div className="absolute top-20 right-4 z-20 flex flex-col items-center gap-2 bg-surface-darker/90 backdrop-blur-md border border-surface-border p-2 rounded-2xl shadow-hud">
+      {/* NASA Mars Trek 3D Navigation Gizmo (Right-Hand Dock) */}
+      <div className="absolute top-20 right-4 z-20 flex flex-col items-center gap-2 bg-surface-darker/95 backdrop-blur-md border border-surface-border p-2 rounded-2xl shadow-hud">
         {/* Rotating Compass Indicator */}
         <button
           onClick={handleResetNorth}
@@ -659,7 +797,28 @@ export default function MarsGlobe3D({
           </div>
         </button>
 
-        <div className="w-full h-px bg-surface-border my-1" />
+        {/* Altitude Readout */}
+        <div className="text-[9px] font-mono text-cyan-300 font-bold text-center px-1.5 py-0.5 rounded bg-[#090d16] border border-cyan-900/40">
+          {cameraAltitudeKm > 1000 ? `${(cameraAltitudeKm / 1000).toFixed(1)}k km` : `${cameraAltitudeKm} km`}
+        </div>
+
+        <div className="w-full h-px bg-surface-border my-0.5" />
+
+        {/* NASA Mars Trek Horizon Tilt Toggle */}
+        <button
+          onClick={() => {
+            const nextTilt = cameraTiltDeg === 0 ? 45 : 0;
+            handleTiltChange(nextTilt);
+          }}
+          title={cameraTiltDeg === 0 ? "Switch to Oblique Horizon Flyover View (NASA Trek)" : "Switch to Nadir (Top-Down) View"}
+          className={`w-8 h-8 rounded-lg border flex items-center justify-center font-mono text-[10px] font-black transition-colors ${
+            cameraTiltDeg > 0
+              ? "bg-mars-600 border-mars-400 text-white shadow-[0_0_12px_rgba(240,90,54,0.6)]"
+              : "bg-surface-dark hover:bg-surface-card border-surface-border text-gray-300 hover:text-white"
+          }`}
+        >
+          {cameraTiltDeg > 0 ? "HORIZ" : "NADIR"}
+        </button>
 
         {/* Zoom In / Out Buttons */}
         <button
@@ -682,6 +841,7 @@ export default function MarsGlobe3D({
             if (cameraRef.current) {
               cameraRef.current.position.set(0, 0.5, 4.8);
               setCameraAltitudeKm(5400);
+              setCameraTiltDeg(0);
               handleResetNorth();
             }
           }}

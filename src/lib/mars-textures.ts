@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { getGlobalMolaElevation } from "./mola-data";
 
 let cachedAlbedoTexture: THREE.CanvasTexture | null = null;
+let cachedMolaColorTexture: THREE.CanvasTexture | null = null;
 let cachedBumpTexture: THREE.CanvasTexture | null = null;
 let cachedSkyboxTexture: THREE.CanvasTexture | null = null;
 
@@ -346,4 +347,82 @@ export function createDeepSpaceSkybox(): THREE.Mesh {
   });
 
   return new THREE.Mesh(skyGeo, skyMat);
+}
+
+/**
+ * Creates the authentic NASA MOLA Color Hillshade topography texture.
+ * Maps elevation to the standard NASA planetary rainbow spectrum (purple to white).
+ */
+export function createMarsMolaColorTexture(): THREE.CanvasTexture {
+  if (typeof document === "undefined") {
+    return new THREE.Texture() as THREE.CanvasTexture;
+  }
+  if (cachedMolaColorTexture) {
+    return cachedMolaColorTexture;
+  }
+  const width = 1024;
+  const height = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.Texture() as THREE.CanvasTexture;
+
+  const imgData = ctx.createImageData(width, height);
+  const data = imgData.data;
+
+  const minElev = -8200;
+  const maxElev = 21229;
+
+  for (let y = 0; y < height; y++) {
+    const lat = 90 - (y / height) * 180;
+    for (let x = 0; x < width; x++) {
+      const lng = -180 + (x / width) * 360;
+      const idx = (y * width + x) * 4;
+      const elev = getGlobalMolaElevation({ lat, lng });
+      const t = Math.max(0, Math.min(1, (elev - minElev) / (maxElev - minElev)));
+
+      let r = 0, g = 0, b = 0;
+      if (t < 0.2) {
+        const f = t / 0.2;
+        r = Math.round(50 * (1 - f) + 0 * f);
+        g = Math.round(20 * (1 - f) + 180 * f);
+        b = Math.round(180 * (1 - f) + 255 * f);
+      } else if (t < 0.4) {
+        const f = (t - 0.2) / 0.2;
+        r = Math.round(0 * (1 - f) + 30 * f);
+        g = Math.round(180 * (1 - f) + 200 * f);
+        b = Math.round(255 * (1 - f) + 80 * f);
+      } else if (t < 0.6) {
+        const f = (t - 0.4) / 0.2;
+        r = Math.round(30 * (1 - f) + 240 * f);
+        g = Math.round(200 * (1 - f) + 220 * f);
+        b = Math.round(80 * (1 - f) + 30 * f);
+      } else if (t < 0.8) {
+        const f = (t - 0.6) / 0.2;
+        r = Math.round(240 * (1 - f) + 220 * f);
+        g = Math.round(220 * (1 - f) + 40 * f);
+        b = Math.round(30 * (1 - f) + 20 * f);
+      } else {
+        const f = (t - 0.8) / 0.2;
+        r = Math.round(220 * (1 - f) + 255 * f);
+        g = Math.round(40 * (1 - f) + 255 * f);
+        b = Math.round(20 * (1 - f) + 255 * f);
+      }
+
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  cachedMolaColorTexture = texture;
+  return texture;
 }

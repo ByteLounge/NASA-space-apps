@@ -26,6 +26,7 @@ interface TopBarProps {
   onOpenGuide: () => void;
   onOpenMissionBrief?: () => void;
   onSelectSearchResult: (point: SciencePoint) => void;
+  onSelectPolar?: (pole: "NORTH" | "SOUTH") => void;
   hasActiveRoute: boolean;
 }
 
@@ -39,6 +40,7 @@ export default function TopBar({
   onOpenGuide,
   onOpenMissionBrief,
   onSelectSearchResult,
+  onSelectPolar,
   hasActiveRoute,
 }: TopBarProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -163,6 +165,24 @@ export default function TopBar({
             <span className="hidden md:inline">3D Globe</span>
             <span className="md:hidden">3D</span>
           </button>
+          {onSelectPolar && (
+            <>
+              <button
+                onClick={() => onSelectPolar("NORTH")}
+                className="hidden 2xl:flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-mono text-gray-400 hover:text-white transition-colors"
+                title="North Polar Stereographic Projection"
+              >
+                <span>❄ N. Polar</span>
+              </button>
+              <button
+                onClick={() => onSelectPolar("SOUTH")}
+                className="hidden 2xl:flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-mono text-gray-400 hover:text-white transition-colors"
+                title="South Polar Stereographic Projection"
+              >
+                <span>❄ S. Polar</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Region Quick Selector */}

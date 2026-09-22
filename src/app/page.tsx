@@ -72,7 +72,14 @@ export default function MarscopeApp() {
     crismMinerals: true,
     hazards: true,
     activeRoute: true,
+    graticuleGrid: true,
+    nomenclature: true,
   });
+
+  // Interactive Measurement & Sun Simulation State
+  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [measurePoints, setMeasurePoints] = useState<MarsCoordinate[]>([]);
+  const [sunAngleLs, setSunAngleLs] = useState<number>(60);
 
   // Route Planning
   const [startCoord, setStartCoord] = useState<MarsCoordinate | null>({
@@ -245,6 +252,14 @@ export default function MarscopeApp() {
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenMissionBrief={() => setIsMissionBriefOpen(true)}
         onSelectSearchResult={(point) => handleSelectSciencePoint(point)}
+        onSelectPolar={(pole) => {
+          if (pole === "NORTH") {
+            setSelectedCoordinate({ lat: 85.0, lng: 0.0 });
+          } else {
+            handleSelectRegion("south_pole");
+            setSelectedCoordinate({ lat: -85.0, lng: 0.0 });
+          }
+        }}
         hasActiveRoute={!!activeRoute}
       />
 
@@ -265,6 +280,20 @@ export default function MarscopeApp() {
               showComparison={isComparisonModalOpen}
               activeLayers={activeLayers}
               baseOpacity={baseOpacity}
+              isMeasuring={isMeasuring}
+              measurePoints={measurePoints}
+              onAddMeasurePoint={(coord) => {
+                if (measurePoints.length >= 2) {
+                  setMeasurePoints([coord]);
+                } else {
+                  setMeasurePoints((prev) => [...prev, coord]);
+                }
+              }}
+              onClearMeasure={() => setMeasurePoints([])}
+              onExitMeasure={() => {
+                setIsMeasuring(false);
+                setMeasurePoints([]);
+              }}
               onSelectCoordinate={handleSelectCoordinate}
               onSelectSciencePoint={handleSelectSciencePoint}
               onHoverCoordinate={setHoverCoordinate}
@@ -280,6 +309,8 @@ export default function MarscopeApp() {
               selectedRegionId={selectedRegionId}
               selectedCoordinate={selectedCoordinate}
               activeRoute={activeRoute}
+              activeLayers={activeLayers}
+              sunAngleLs={sunAngleLs}
               onSelectCoordinate={handleSelectCoordinate}
               onSelectFeature={handleSelectSciencePoint}
             />
@@ -322,6 +353,17 @@ export default function MarscopeApp() {
         {activeTrekDrawer === "TOOLS" && (
           <TrekToolsDrawer
             activeRoute={activeRoute}
+            sunAngleLs={sunAngleLs}
+            onSunAngleChange={setSunAngleLs}
+            onStartMapMeasure={() => {
+              setIsMeasuring(true);
+              setMeasurePoints([]);
+              setViewMode("2D");
+            }}
+            onFlyTo={(coord) => {
+              handleSelectCoordinate(coord);
+              setActiveTrekDrawer("NONE");
+            }}
             onOpenElevationChart={() => {
               setIsElevationChartOpen(true);
               setActiveTrekDrawer("NONE");
